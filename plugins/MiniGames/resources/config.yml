@@ -1,0 +1,16 @@
+# MiniGames config
+arena:
+  level: world
+  lobby:
+    x: 128
+    y: 70
+    z: 128
+  spawns:
+    - { x: 140, y: 70, z: 140 }
+    - { x: 116, y: 70, z: 140 }
+    - { x: 140, y: 70, z: 116 }
+    - { x: 116, y: 70, z: 116 }
+settings:
+  minPlayers: 2
+  countdown: 20
+  maxPlayers: 12

@@ -1,0 +1,17 @@
+name: MiniGames
+main: MiniGames\Main
+version: 1.0.0
+api: [1.13.1]
+author: Codex
+description: Mini games plugin (Last Player Standing)
+commands:
+  minigame:
+    description: Join or manage the mini game arena
+    usage: "/minigame <join|leave|start|status>"
+    aliases: [mg]
+    permission: minigame.command
+permissions:
+  minigame.command:
+    default: true
+  minigame.command.start:
+    default: op
