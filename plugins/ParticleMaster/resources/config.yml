@@ -1,0 +1,6 @@
+settings:
+  tick-interval: 2
+  default-effect: ring_ruby
+  max-particles-per-tick: 24
+messages:
+  prefix: "§dParticleMaster §8» §r"
