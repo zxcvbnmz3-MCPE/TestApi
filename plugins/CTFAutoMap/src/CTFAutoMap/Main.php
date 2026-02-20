@@ -20,7 +20,7 @@ class Main extends PluginBase{
             return true;
         }
 
-        $worldName = isset($args[1]) ? (string) $args[1] : 'ctf_world';
+        $worldName = isset($args[1]) ? (string) $args[1] : 'ctf_void';
         $this->createCtfWorld($sender, $worldName);
         return true;
     }
@@ -39,14 +39,14 @@ class Main extends PluginBase{
             return;
         }
 
-        $this->prepareChunks($level, -8, 8, -8, 8);
-        $this->buildArena($level);
+        $this->prepareChunks($level, -9, 9, -9, 9);
+        $this->buildVoidArena($level);
         $level->save(true);
 
         $this->updateCtfPluginConfig($worldName);
 
-        $sender->sendMessage('§aCTF world generated: §e' . $worldName);
-        $sender->sendMessage('§aArena built (bases, bridge, walls, flags, spawn).');
+        $sender->sendMessage('§aVoid CTF world generated: §e' . $worldName);
+        $sender->sendMessage('§aCustom islands + bridges + spawns + flags were built.');
     }
 
     private function prepareChunks($level, $minX, $maxX, $minZ, $maxZ){
@@ -60,74 +60,86 @@ class Main extends PluginBase{
         }
     }
 
-    private function buildArena($level){
-        $groundY = 64;
+    private function buildVoidArena($level){
+        $baseY = 70;
 
-        for($x = -90; $x <= 90; $x++){
-            for($z = -90; $z <= 90; $z++){
-                // clear air space
-                for($y = 65; $y <= 85; $y++){
+        // Clear to void (keep only y0 bedrock layers untouched)
+        for($x = -150; $x <= 150; $x++){
+            for($z = -150; $z <= 150; $z++){
+                for($y = 1; $y <= 120; $y++){
                     $level->setBlock(new Vector3($x, $y, $z), Block::get(Block::AIR), true, false);
                 }
-
-                $level->setBlock(new Vector3($x, $groundY - 1, $z), Block::get(Block::DIRT), true, false);
-                $level->setBlock(new Vector3($x, $groundY, $z), Block::get(Block::GRASS), true, false);
             }
         }
 
-        // walls
-        for($x = -92; $x <= 92; $x++){
-            for($y = $groundY + 1; $y <= $groundY + 6; $y++){
-                $level->setBlock(new Vector3($x, $y, -92), Block::get(Block::STONE_BRICKS), true, false);
-                $level->setBlock(new Vector3($x, $y, 92), Block::get(Block::STONE_BRICKS), true, false);
-            }
-        }
-        for($z = -92; $z <= 92; $z++){
-            for($y = $groundY + 1; $y <= $groundY + 6; $y++){
-                $level->setBlock(new Vector3(-92, $y, $z), Block::get(Block::STONE_BRICKS), true, false);
-                $level->setBlock(new Vector3(92, $y, $z), Block::get(Block::STONE_BRICKS), true, false);
-            }
-        }
+        // Center island
+        $this->buildIsland($level, 0, $baseY, 0, 18, Block::STONE_BRICKS);
 
-        // center bridge
-        for($z = -70; $z <= 70; $z++){
-            for($x = -5; $x <= 5; $x++){
-                $level->setBlock(new Vector3($x, $groundY + 1, $z), Block::get(Block::WOODEN_PLANKS), true, false);
-            }
-        }
+        // Team islands
+        $this->buildIsland($level, -70, $baseY, 0, 16, Block::WOOL, 14);
+        $this->buildIsland($level, 70, $baseY, 0, 16, Block::WOOL, 11);
 
-        // center tower
-        for($y = $groundY + 1; $y <= $groundY + 12; $y++){
-            $level->setBlock(new Vector3(0, $y, 0), Block::get(Block::STONE_BRICKS), true, false);
-        }
+        // Bridges
+        $this->buildBridge($level, -52, $baseY + 1, 0, -18, $baseY + 1, 0, Block::WOODEN_PLANKS);
+        $this->buildBridge($level, 18, $baseY + 1, 0, 52, $baseY + 1, 0, Block::WOODEN_PLANKS);
 
-        $this->buildBase($level, -60, $groundY + 1, 0, 14, Block::REDSTONE_BLOCK);
-        $this->buildBase($level, 60, $groundY + 1, 0, 11, Block::LAPIS_BLOCK);
+        // Side mini islands
+        $this->buildIsland($level, 0, $baseY - 1, -45, 8, Block::COBBLESTONE);
+        $this->buildIsland($level, 0, $baseY - 1, 45, 8, Block::COBBLESTONE);
 
-        $level->setSpawnLocation(new Vector3(0, $groundY + 2, 0));
+        // Flag towers
+        $this->buildFlagTower($level, -70, $baseY + 1, 0, Block::REDSTONE_BLOCK);
+        $this->buildFlagTower($level, 70, $baseY + 1, 0, Block::LAPIS_BLOCK);
+
+        // Spawn pads
+        $this->buildSpawnPad($level, -70, $baseY + 1, 0);
+        $this->buildSpawnPad($level, 70, $baseY + 1, 0);
+
+        // Lobby spawn
+        $this->buildSpawnPad($level, 0, $baseY + 2, 0);
+        $level->setSpawnLocation(new Vector3(0, $baseY + 3, 0));
     }
 
-    private function buildBase($level, $x, $y, $z, $woolMeta, $flagBlockId){
-        for($ix = -12; $ix <= 12; $ix++){
-            for($iz = -12; $iz <= 12; $iz++){
-                if(($ix * $ix + $iz * $iz) <= 144){
-                    $level->setBlock(new Vector3($x + $ix, $y, $z + $iz), Block::get(Block::WOOL, $woolMeta), true, false);
+    private function buildIsland($level, $cx, $cy, $cz, $radius, $blockId, $meta = 0){
+        for($x = -$radius; $x <= $radius; $x++){
+            for($z = -$radius; $z <= $radius; $z++){
+                $dist = sqrt($x * $x + $z * $z);
+                if($dist <= $radius){
+                    $height = (int) max(1, 3 - floor($dist / max(1, $radius / 4)));
+                    for($h = 0; $h < $height; $h++){
+                        $level->setBlock(new Vector3($cx + $x, $cy - $h, $cz + $z), Block::get($blockId, $meta), true, false);
+                    }
                 }
             }
         }
+    }
 
-        // spawn pad
-        for($ix = -2; $ix <= 2; $ix++){
-            for($iz = -2; $iz <= 2; $iz++){
-                $level->setBlock(new Vector3($x + $ix, $y + 1, $z + $iz), Block::get(Block::QUARTZ_BLOCK), true, false);
+    private function buildBridge($level, $x1, $y1, $z1, $x2, $y2, $z2, $blockId){
+        $minX = min($x1, $x2);
+        $maxX = max($x1, $x2);
+        $minZ = min($z1, $z2);
+        $maxZ = max($z1, $z2);
+
+        for($x = $minX; $x <= $maxX; $x++){
+            for($z = $minZ - 2; $z <= $maxZ + 2; $z++){
+                $level->setBlock(new Vector3($x, $y1, $z), Block::get($blockId), true, false);
             }
         }
+    }
 
-        // flag stand
-        for($iy = 1; $iy <= 6; $iy++){
-            $level->setBlock(new Vector3($x, $y + $iy, $z), Block::get(Block::COBBLESTONE), true, false);
+    private function buildFlagTower($level, $x, $y, $z, $flagBlock){
+        for($i = 0; $i <= 6; $i++){
+            $level->setBlock(new Vector3($x, $y + $i, $z), Block::get(Block::QUARTZ_BLOCK), true, false);
         }
-        $level->setBlock(new Vector3($x, $y + 7, $z), Block::get($flagBlockId), true, false);
+        $level->setBlock(new Vector3($x, $y + 7, $z), Block::get($flagBlock), true, false);
+    }
+
+    private function buildSpawnPad($level, $x, $y, $z){
+        for($ix = -2; $ix <= 2; $ix++){
+            for($iz = -2; $iz <= 2; $iz++){
+                $level->setBlock(new Vector3($x + $ix, $y, $z + $iz), Block::get(Block::GLOWSTONE), true, false);
+            }
+        }
     }
 
     private function updateCtfPluginConfig($worldName){
@@ -138,13 +150,13 @@ class Main extends PluginBase{
 
         $config = $ctf->getConfig();
         $config->setNested('arena.level', $worldName);
-        $config->setNested('arena.lobby', ['x' => 0, 'y' => 66, 'z' => 0]);
+        $config->setNested('arena.lobby', ['x' => 0, 'y' => 73, 'z' => 0]);
 
-        $config->setNested('teams.red.spawn', ['x' => -60, 'y' => 66, 'z' => 0]);
-        $config->setNested('teams.red.flag', ['x' => -60, 'y' => 72, 'z' => 0]);
+        $config->setNested('teams.red.spawn', ['x' => -70, 'y' => 72, 'z' => 0]);
+        $config->setNested('teams.red.flag', ['x' => -70, 'y' => 78, 'z' => 0]);
 
-        $config->setNested('teams.blue.spawn', ['x' => 60, 'y' => 66, 'z' => 0]);
-        $config->setNested('teams.blue.flag', ['x' => 60, 'y' => 72, 'z' => 0]);
+        $config->setNested('teams.blue.spawn', ['x' => 70, 'y' => 72, 'z' => 0]);
+        $config->setNested('teams.blue.flag', ['x' => 70, 'y' => 78, 'z' => 0]);
 
         $config->save();
     }

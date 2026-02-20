@@ -4,16 +4,13 @@ namespace CTF\game;
 use CTF\Main;
 use CTF\model\FlagState;
 use CTF\model\Team;
-use pocketmine\entity\Entity;
 use pocketmine\event\entity\EntityDamageByEntityEvent;
 use pocketmine\item\Item;
 use pocketmine\level\Position;
+use pocketmine\level\particle\FloatingTextParticle;
 use pocketmine\level\particle\HappyVillagerParticle;
 use pocketmine\level\particle\RedstoneParticle;
-use pocketmine\nbt\tag\Compound;
-use pocketmine\nbt\tag\DoubleTag;
-use pocketmine\nbt\tag\FloatTag;
-use pocketmine\nbt\tag\ListTag;
+use pocketmine\math\Vector3;
 use pocketmine\Player;
 
 class GameManager{
@@ -25,9 +22,7 @@ class GameManager{
 
     /** @var Main */
     private $plugin;
-    /** @var int */
     private $state = self::LOBBY;
-    /** @var int */
     private $countdown = 0;
 
     /** @var Team[] */
@@ -45,16 +40,12 @@ class GameManager{
     /** @var int[] */
     private $respawnQueue = [];
 
-    /** @var bool */
     private $botMode = false;
-    /** @var string */
     private $botName = 'CTF-Bot';
-    /** @var string|null */
     private $botTeamId = null;
-    /** @var int */
     private $botTickCounter = 0;
-    /** @var Entity|null */
-    private $botEntity = null;
+    /** @var Position|null */
+    private $botPos = null;
 
     public function __construct(Main $plugin){
         $this->plugin = $plugin;
@@ -67,7 +58,7 @@ class GameManager{
 
     public function joinWithBot(Player $player){
         if(count($this->teams) < 2){
-            $player->sendMessage('§cNeed at least 2 teams in CTF config.');
+            $player->sendMessage('§cNeed at least 2 teams in config.');
             return;
         }
 
@@ -78,19 +69,16 @@ class GameManager{
             $this->state = self::COUNTDOWN;
             $this->countdown = 5;
         }
-
-        $this->broadcast('§eBot mode enabled. Enemy bot will spawn at match start.');
+        $this->broadcast('§eBot mode enabled.');
     }
 
     public function join(Player $player){
         $pn = strtolower($player->getName());
-        if(isset($this->players[$pn])){
-            $player->sendMessage('§cYou are already in CTF.');
-            return;
-        }
+        if(isset($this->players[$pn])) return;
 
         $this->players[$pn] = $player;
         $this->alive[$pn] = $player;
+
         $this->plugin->getInventoryManager()->save($player);
         $player->getInventory()->clearAll();
         $player->teleport($this->getLobbyPosition());
@@ -100,26 +88,18 @@ class GameManager{
         if($this->state === self::LOBBY && $this->getActiveCompetitorCount() >= $this->plugin->getMinPlayers()){
             $this->state = self::COUNTDOWN;
             $this->countdown = $this->plugin->getCountdown();
-            $this->broadcast('§6Countdown started.');
         }
     }
 
     public function leave(Player $player, $notify = true){
         $pn = strtolower($player->getName());
-        if(!isset($this->players[$pn])){
-            if($notify){
-                $player->sendMessage('§cNot in CTF.');
-            }
-            return;
-        }
+        if(!isset($this->players[$pn])) return;
 
         $this->dropFlagIfCarrier($player, true);
         unset($this->players[$pn], $this->alive[$pn], $this->teamOf[$pn], $this->respawnQueue[$pn]);
 
         $this->plugin->getInventoryManager()->restore($player);
-        if($notify){
-            $player->sendMessage('§eYou left CTF.');
-        }
+        if($notify) $player->sendMessage('§eYou left CTF.');
 
         if($this->state === self::IN_GAME){
             $this->checkWin();
@@ -127,29 +107,23 @@ class GameManager{
     }
 
     public function forceStart(){
-        if($this->state === self::IN_GAME){
-            return;
-        }
-        if($this->getActiveCompetitorCount() < $this->plugin->getMinPlayers() && !$this->botMode){
-            $this->broadcast('§cNot enough players.');
-            return;
-        }
+        if($this->state === self::IN_GAME) return;
+        if($this->getActiveCompetitorCount() < $this->plugin->getMinPlayers() && !$this->botMode) return;
 
         $this->state = self::COUNTDOWN;
         $this->countdown = 5;
-        $this->broadcast('§6Forced start in 5 seconds.');
     }
 
     public function stop(){
-        $this->broadcast('§cCTF stopped by admin.');
         $this->endGame(null);
     }
 
     public function tick(){
+        $this->plugin->getNpcManager()->render($this->players);
+
         if($this->state === self::COUNTDOWN){
             if($this->getActiveCompetitorCount() < $this->plugin->getMinPlayers() && !$this->botMode){
                 $this->state = self::LOBBY;
-                $this->broadcast('§cCountdown canceled: insufficient players.');
                 return;
             }
 
@@ -175,9 +149,7 @@ class GameManager{
 
     public function onPlayerKilled(Player $player, Player $killer = null){
         $pn = strtolower($player->getName());
-        if(!isset($this->players[$pn])){
-            return;
-        }
+        if(!isset($this->players[$pn])) return;
 
         unset($this->alive[$pn]);
         $this->dropFlagIfCarrier($player, false);
@@ -190,24 +162,9 @@ class GameManager{
     }
 
     public function onHitNpcGuide(Player $player, EntityDamageByEntityEvent $event){
-        $entity = $event->getEntity();
-        foreach((array) $this->plugin->getConfig()->getNested('npc.guides', []) as $npc){
-            if(!isset($npc['level'], $npc['x'], $npc['y'], $npc['z'])){
-                continue;
-            }
-            if($entity->getLevel()->getName() !== $npc['level']){
-                continue;
-            }
-
-            $dx = $entity->x - (float) $npc['x'];
-            $dy = $entity->y - (float) $npc['y'];
-            $dz = $entity->z - (float) $npc['z'];
-            if(sqrt($dx * $dx + $dy * $dy + $dz * $dz) <= 2.0){
-                $event->setCancelled(true);
-                $player->sendMessage('§6CTF Guide: §e/ctf join§7, §e/ctf join bot§7, §e/ctf leave');
-                return;
-            }
-        }
+        // Keep compatibility: simple help message when player hits entities.
+        $event->setCancelled(true);
+        $player->sendMessage('§6CTF: §e/ctf join §7| §e/ctf join bot §7| §e/ctf leave');
     }
 
     public function getStatusLines(){
@@ -230,18 +187,15 @@ class GameManager{
         $this->scores = [];
 
         $level = $this->getArenaLevel();
-        if($level === null){
-            return;
-        }
+        if($level === null) return;
 
         foreach((array) $this->plugin->getConfig()->get('teams', []) as $id => $row){
-            if(!isset($row['display'], $row['color'], $row['spawn'], $row['flag'])){
-                continue;
-            }
+            if(!isset($row['display'], $row['color'], $row['spawn'], $row['flag'])) continue;
+
             $spawn = new Position((float) $row['spawn']['x'], (float) $row['spawn']['y'], (float) $row['spawn']['z'], $level);
             $flagPos = new Position((float) $row['flag']['x'], (float) $row['flag']['y'], (float) $row['flag']['z'], $level);
-
             $team = new Team($id, $row['display'], $row['color'], $spawn);
+
             $this->teams[$id] = $team;
             $this->flags[$id] = new FlagState($team, $flagPos);
             $this->scores[$id] = 0;
@@ -253,9 +207,7 @@ class GameManager{
         $this->assignTeams();
 
         foreach($this->players as $pn => $player){
-            if(!$player instanceof Player || !$player->isOnline() || !isset($this->teamOf[$pn])){
-                continue;
-            }
+            if(!$player instanceof Player || !$player->isOnline() || !isset($this->teamOf[$pn])) continue;
             $teamId = $this->teamOf[$pn];
             $player->teleport($this->teams[$teamId]->getSpawn());
             $player->setHealth($player->getMaxHealth());
@@ -268,24 +220,21 @@ class GameManager{
         }
 
         if($this->botMode && $this->botTeamId !== null){
-            $this->spawnBotEntity();
+            $spawn = $this->teams[$this->botTeamId]->getSpawn();
+            $this->botPos = Position::fromObject($spawn, $spawn->getLevel());
         }
 
-        $this->broadcast('§aCTF started! Capture enemy flag and return to your base.');
+        $this->broadcast('§aCTF started!');
     }
 
     private function assignTeams(){
         $teamIds = array_keys($this->teams);
-        if(count($teamIds) < 2){
-            return;
-        }
+        if(count($teamIds) < 2) return;
 
         if($this->botMode && count($this->players) === 1){
             $player = array_values($this->players)[0];
-            $pn = strtolower($player->getName());
-            $this->teamOf[$pn] = $teamIds[0];
+            $this->teamOf[strtolower($player->getName())] = $teamIds[0];
             $this->botTeamId = $teamIds[1];
-            $player->sendMessage('§7Your team: ' . $this->teams[$teamIds[0]]->getColoredName());
             return;
         }
 
@@ -293,8 +242,7 @@ class GameManager{
         shuffle($pool);
         $i = 0;
         foreach($pool as $player){
-            $teamId = $teamIds[$i % count($teamIds)];
-            $this->teamOf[strtolower($player->getName())] = $teamId;
+            $this->teamOf[strtolower($player->getName())] = $teamIds[$i % count($teamIds)];
             $i++;
         }
     }
@@ -302,75 +250,49 @@ class GameManager{
     private function tickRespawns(){
         foreach($this->respawnQueue as $pn => $left){
             $this->respawnQueue[$pn] = $left - 1;
-            if($this->respawnQueue[$pn] > 0){
-                continue;
-            }
-            unset($this->respawnQueue[$pn]);
+            if($this->respawnQueue[$pn] > 0) continue;
 
-            if(!isset($this->players[$pn], $this->teamOf[$pn])){
-                continue;
-            }
+            unset($this->respawnQueue[$pn]);
+            if(!isset($this->players[$pn], $this->teamOf[$pn])) continue;
 
             $player = $this->players[$pn];
-            if(!$player instanceof Player || !$player->isOnline()){
-                continue;
-            }
+            if(!$player instanceof Player || !$player->isOnline()) continue;
 
             $teamId = $this->teamOf[$pn];
             $player->teleport($this->teams[$teamId]->getSpawn());
             $player->setHealth($player->getMaxHealth());
             $this->equipTeamArmor($player, $teamId);
             $this->alive[$pn] = $player;
-
-            if($this->plugin->isParticlesEnabled()){
-                $player->getLevel()->addParticle(new HappyVillagerParticle($player));
-            }
         }
     }
 
     private function tickFlagInteractions(){
         foreach($this->players as $pn => $player){
-            if(!$player instanceof Player || !$player->isOnline()){
-                continue;
-            }
-            if(!isset($this->alive[$pn], $this->teamOf[$pn])){
-                continue;
-            }
+            if(!$player instanceof Player || !$player->isOnline()) continue;
+            if(!isset($this->alive[$pn], $this->teamOf[$pn])) continue;
 
             $myTeam = $this->teamOf[$pn];
-
             foreach($this->flags as $teamId => $flag){
-                if($teamId === $myTeam || $flag->getCarrier() !== null){
-                    continue;
-                }
+                if($teamId === $myTeam || $flag->getCarrier() !== null) continue;
                 if($player->distance($flag->getPosition()) <= 2.0){
                     $flag->setCarrier($player);
                     $flag->setAtBase(false);
-                    $this->broadcast($this->teams[$myTeam]->getColoredName() . ' §e' . $player->getName() . ' took ' . $flag->getTeam()->getColoredName() . ' §eflag!');
                 }
             }
 
             $ownFlag = $this->flags[$myTeam];
             if(!$ownFlag->isAtBase() && $ownFlag->getCarrier() === null && $player->distance($ownFlag->getPosition()) <= 2.0){
                 $ownFlag->reset();
-                $this->broadcast($this->teams[$myTeam]->getColoredName() . ' §eflag returned.');
             }
 
             foreach($this->flags as $enemyTeam => $enemyFlag){
-                if($enemyTeam === $myTeam || $enemyFlag->getCarrier() !== $player){
-                    continue;
-                }
-
-                if(!$this->flags[$myTeam]->isAtBase()){
-                    continue;
-                }
+                if($enemyTeam === $myTeam || $enemyFlag->getCarrier() !== $player) continue;
+                if(!$this->flags[$myTeam]->isAtBase()) continue;
 
                 if($player->distance($this->teams[$myTeam]->getSpawn()) <= 3.0){
                     $enemyFlag->reset();
                     $this->scores[$myTeam]++;
                     $this->plugin->addStat($player->getName(), 'captures', 1);
-                    $this->broadcast($this->teams[$myTeam]->getColoredName() . ' §ascored! §7(' . $this->scores[$myTeam] . '/' . $this->plugin->getMaxScore() . ')');
-
                     if($this->scores[$myTeam] >= $this->plugin->getMaxScore()){
                         $this->endGame($myTeam);
                         return;
@@ -388,81 +310,34 @@ class GameManager{
     }
 
     private function tickBotMode(){
-        if(!$this->botMode || $this->botTeamId === null || $this->state !== self::IN_GAME){
+        if(!$this->botMode || $this->botTeamId === null || $this->state !== self::IN_GAME || !isset($this->teams[$this->botTeamId])){
             return;
         }
 
         $this->botTickCounter++;
-        if($this->botTickCounter % 10 === 0 && $this->botEntity instanceof Entity && !$this->botEntity->closed){
-            $spawn = $this->teams[$this->botTeamId]->getSpawn();
-            $this->botEntity->teleport(new Position($spawn->x + mt_rand(-6, 6), $spawn->y, $spawn->z + mt_rand(-6, 6), $spawn->getLevel()));
+
+        if($this->botPos instanceof Position){
+            $this->botPos->getLevel()->addParticle(new FloatingTextParticle($this->botPos->add(0, 2.0, 0), 'Enemy BOT', '§c' . $this->botName));
+            $this->botPos->getLevel()->addParticle(new HappyVillagerParticle($this->botPos));
         }
 
-        if($this->botTickCounter < 20){
-            return;
+        if($this->botTickCounter % 10 === 0 && $this->botPos instanceof Position){
+            $spawn = $this->teams[$this->botTeamId]->getSpawn();
+            $this->botPos = new Position($spawn->x + mt_rand(-5, 5), $spawn->y + 1, $spawn->z + mt_rand(-5, 5), $spawn->getLevel());
         }
+
+        if($this->botTickCounter < 20) return;
         $this->botTickCounter = 0;
 
-        $enemyTeams = [];
-        foreach($this->scores as $teamId => $s){
-            if($teamId !== $this->botTeamId){
-                $enemyTeams[] = $teamId;
-            }
-        }
-        if(count($enemyTeams) === 0){
-            return;
-        }
-
         $this->scores[$this->botTeamId]++;
-        $target = $enemyTeams[array_rand($enemyTeams)];
-        $this->broadcast('§c' . $this->botName . ' §escored against ' . $this->teams[$target]->getColoredName() . '§e!');
-
-        if($this->plugin->isParticlesEnabled() && $this->botEntity instanceof Entity && !$this->botEntity->closed){
-            $this->botEntity->getLevel()->addParticle(new HappyVillagerParticle($this->botEntity));
-        }
-
         if($this->scores[$this->botTeamId] >= $this->plugin->getMaxScore()){
             $this->endGame($this->botTeamId);
         }
     }
 
-    private function spawnBotEntity(){
-        $this->despawnBotEntity();
-
-        if($this->botTeamId === null || !isset($this->teams[$this->botTeamId])){
-            return;
-        }
-
-        $pos = $this->teams[$this->botTeamId]->getSpawn();
-        $level = $pos->getLevel();
-
-        $nbt = new Compound('', [
-            'Pos' => new ListTag('Pos', [new DoubleTag('', (float) $pos->x), new DoubleTag('', (float) $pos->y), new DoubleTag('', (float) $pos->z)]),
-            'Motion' => new ListTag('Motion', [new DoubleTag('', 0.0), new DoubleTag('', 0.0), new DoubleTag('', 0.0)]),
-            'Rotation' => new ListTag('Rotation', [new FloatTag('', 0.0), new FloatTag('', 0.0)])
-        ]);
-
-        $entity = Entity::createEntity('Villager', $level->getChunk((int) $pos->x >> 4, (int) $pos->z >> 4), $nbt);
-        if($entity instanceof Entity){
-            $entity->setNameTagAlwaysVisible(true);
-            $entity->setNameTag('§c' . $this->botName);
-            $entity->spawnToAll();
-            $this->botEntity = $entity;
-        }
-    }
-
-    private function despawnBotEntity(){
-        if($this->botEntity instanceof Entity && !$this->botEntity->closed){
-            $this->botEntity->close();
-        }
-        $this->botEntity = null;
-    }
-
     private function dropFlagIfCarrier(Player $player, $returnToBase){
         foreach($this->flags as $flag){
-            if($flag->getCarrier() !== $player){
-                continue;
-            }
+            if($flag->getCarrier() !== $player) continue;
             if($returnToBase){
                 $flag->reset();
             }else{
@@ -493,8 +368,6 @@ class GameManager{
         $this->state = self::POST_GAME;
 
         if($winnerTeamId !== null && isset($this->teams[$winnerTeamId])){
-            $winner = $this->teams[$winnerTeamId];
-            $this->broadcast('§aWinner: ' . $winner->getColoredName());
             foreach($this->players as $pn => $player){
                 if(isset($this->teamOf[$pn]) && $this->teamOf[$pn] === $winnerTeamId){
                     $this->plugin->addStat($player->getName(), 'wins', 1);
@@ -513,7 +386,6 @@ class GameManager{
             $flag->reset();
         }
 
-        $this->despawnBotEntity();
         $this->players = [];
         $this->alive = [];
         $this->teamOf = [];
@@ -521,20 +393,22 @@ class GameManager{
         foreach($this->scores as $teamId => $score){
             $this->scores[$teamId] = 0;
         }
+
         $this->botMode = false;
         $this->botTeamId = null;
+        $this->botPos = null;
         $this->botTickCounter = 0;
         $this->state = self::LOBBY;
     }
 
     private function updatePopup(){
-        if(!$this->plugin->isPopupEnabled()){
-            return;
-        }
+        if(!$this->plugin->isPopupEnabled()) return;
+
         $rows = [];
         foreach($this->teams as $teamId => $team){
             $rows[] = $team->getColoredName() . '§f:' . $this->scores[$teamId];
         }
+
         $line = '§l§bCTF §r§7| ' . implode(' §7| ', $rows);
         foreach($this->players as $player){
             if($player instanceof Player && $player->isOnline()){
@@ -544,9 +418,8 @@ class GameManager{
     }
 
     private function playAmbientParticles(){
-        if(!$this->plugin->isParticlesEnabled()){
-            return;
-        }
+        if(!$this->plugin->isParticlesEnabled()) return;
+
         foreach($this->flags as $flag){
             $pos = $flag->getPosition();
             if($pos instanceof Position && $pos->getLevel() !== null){
@@ -557,6 +430,7 @@ class GameManager{
 
     private function equipTeamArmor(Player $player, $teamId){
         if(!isset($this->teams[$teamId])) return;
+
         $prefix = $this->teams[$teamId]->getColoredName() . ' §fCTF';
         $inv = $player->getInventory();
         $inv->setHelmet(Item::get(Item::LEATHER_CAP, 0, 1)->setCustomName($prefix));

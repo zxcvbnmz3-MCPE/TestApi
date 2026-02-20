@@ -151,6 +151,7 @@ class Main extends PluginBase implements Listener{
 
     public function getInventoryManager(){ return $this->inventoryManager; }
     public function getGameManager(){ return $this->gameManager; }
+    public function getNpcManager(){ return $this->npcManager; }
 
     public function getMinPlayers(){ return (int) $this->getConfig()->getNested('settings.minPlayers', 2); }
     public function getCountdown(){ return (int) $this->getConfig()->getNested('settings.countdown', 20); }
