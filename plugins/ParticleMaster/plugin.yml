@@ -1,0 +1,21 @@
+name: ParticleMaster
+main: ParticleMaster\Main
+version: 1.0.0
+api: [1.13.1]
+author: Codex
+description: Advanced particle plugin with 100+ styles, names, commands, colors and permissions
+commands:
+  particlefx:
+    description: ParticleMaster command
+    usage: "/particlefx <list|set|off|random|info|me|reload>"
+    aliases: [pfx, particles]
+    permission: particlemaster.command
+permissions:
+  particlemaster.command:
+    default: true
+  particlemaster.random:
+    default: true
+  particlemaster.reload:
+    default: op
+  particlemaster.effect.*:
+    default: true
