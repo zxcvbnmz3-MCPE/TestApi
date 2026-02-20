@@ -1,0 +1,27 @@
+settings:
+  minPlayers: 2
+  maxScore: 3
+  countdown: 20
+  respawnDelay: 3
+  popupEnabled: true
+  particlesEnabled: true
+
+arena:
+  level: world
+  lobby: { x: 128, y: 70, z: 128 }
+
+teams:
+  red:
+    display: "Red"
+    color: "§c"
+    spawn: { x: 140, y: 70, z: 140 }
+    flag: { x: 142, y: 70, z: 140 }
+  blue:
+    display: "Blue"
+    color: "§9"
+    spawn: { x: 116, y: 70, z: 116 }
+    flag: { x: 114, y: 70, z: 116 }
+
+npc:
+  guides: []
+  # - { level: world, x: 128, y: 70, z: 129, name: "CTF Guide" }

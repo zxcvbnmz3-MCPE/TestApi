@@ -1,0 +1,14 @@
+name: CTFAutoMap
+main: CTFAutoMap\Main
+version: 1.0.0
+api: [1.13.1]
+author: Codex
+description: Automatically generate a playable CTF world with spawns and flag points
+commands:
+  ctfmap:
+    description: Create auto CTF world and map
+    usage: "/ctfmap create [worldName]"
+    permission: ctfmap.command
+permissions:
+  ctfmap.command:
+    default: op
