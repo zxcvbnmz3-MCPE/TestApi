@@ -1,0 +1,17 @@
+name: BedWars
+main: BedWars\Main
+version: 1.0.0
+api: [1.13.1]
+author: Codex
+description: Full BedWars plugin with teams, modes, shop NPC, popup and particles
+commands:
+  bw:
+    description: BedWars main command
+    usage: "/bw <join|leave|start|shop|buy|top|setshop>"
+    aliases: [bedwars]
+    permission: bedwars.command
+permissions:
+  bedwars.command:
+    default: true
+  bedwars.admin:
+    default: op

@@ -1,0 +1,37 @@
+settings:
+  minPlayersSolo: 2
+  minPlayersSquad: 4
+  countdown: 20
+  popupEnabled: true
+  particleEnabled: true
+
+shop:
+  npcs: []
+  # Example:
+  # - { level: world, x: 128, y: 70, z: 128, name: "Shop" }
+
+arena:
+  level: world
+  lobby: { x: 128, y: 70, z: 128 }
+  modes:
+    solo:
+      teamSize: 1
+    squad:
+      teamSize: 4
+  teams:
+    red:
+      color: "§c"
+      spawn: { x: 140, y: 70, z: 140 }
+      bed: { x: 141, y: 70, z: 140 }
+    blue:
+      color: "§9"
+      spawn: { x: 116, y: 70, z: 140 }
+      bed: { x: 115, y: 70, z: 140 }
+    green:
+      color: "§a"
+      spawn: { x: 140, y: 70, z: 116 }
+      bed: { x: 141, y: 70, z: 116 }
+    yellow:
+      color: "§e"
+      spawn: { x: 116, y: 70, z: 116 }
+      bed: { x: 115, y: 70, z: 116 }
