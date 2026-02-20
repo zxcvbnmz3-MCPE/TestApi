@@ -1,0 +1,17 @@
+name: CTF
+main: CTF\Main
+version: 1.0.0
+api: [1.13.1]
+author: Codex
+description: Capture The Flag mini-game plugin for PocketMine
+commands:
+  ctf:
+    description: CTF command
+    usage: "/ctf <join [bot]|leave|start|stop|status|top|setnpc>"
+    aliases: [capturetheflag, crf]
+    permission: ctf.command
+permissions:
+  ctf.command:
+    default: true
+  ctf.admin:
+    default: op
